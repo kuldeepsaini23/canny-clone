@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+enum FeatureTagType {
+  NewFeature
+  Upgrade
+  BugFix
+}
+
+enum AffiliatesStatus {
+  Lead
+  Active
+}
+
+enum ChangeLogStatus {
+  Draft
+  Published
+}
+
+enum PostType {
+  Planned
+  Completed
+  InDevelopment
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  BUSINESS
+}
+
+enum RoleType {
+  Owner
+  Admin
+  User
+}
+
+enum accountType {
+  Company
+  User
+}
+
+model User {
+  id                   String         @id @unique @default(dbgenerated("gen_random_uuid()"))
+  email                String         @unique
+  name                 String
+  allTimeIncome        Float          @default(0)
+  monthlyIncome        Float          @default(0)
+  avatar               String
+  accountType          accountType    @default(User)
+  notificationsEnabled Boolean        @default(true)
+  notifications        Notification[]
+  roles                Role[]
+
+  posts       Post[]
+  sentInvites Invite[]    @relation("sender")
+  upvotes     Upvote[]
+  likes       Like[]
+  affiliates  Affiliate[] @relation("Referrer")
+  referredBy  Affiliate?  @relation("Referred")
+  changeLogs  ChangeLog[]
+  comments    Comment[]
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  subscription Subscription?
+
+  @@index([email])
+  @@index([name])
+}
+
+model Comment {
+  id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  comment  String
+  replies  Comment[] @relation("CommentReplies")
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String?   @db.Uuid
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId   String    @db.Uuid
+  likes    Like[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([postId])
+}
+
+model Subscription {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stripeId             String?          @unique
+  company              Company          @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug          String           @unique
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               String           @unique
+  plan                 SubscriptionPlan @default(FREE)
+  expiresAt            DateTime?
+  cardBrand            String?
+  cardLast4            String?
+  updatedAt            DateTime         @updatedAt
+  stripeSubscriptionId String?
+  stripeCustomerId     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([companySlug])
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+}
+
+model Notification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String?
+  company     Company   @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug String
+  content     String
+  read        Boolean   @default(false)
+  readAt      DateTime?
+
+  @@index([userId])
+}
+
+model Invite {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sender        User    @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId      String
+  receiverEmail String // No foreign key, allows invites to non-users
+  content       String
+  company       Company @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug   String
+  accepted      Boolean @default(false)
+
+  @@unique([senderId, receiverEmail, companySlug])
+  @@index([senderId])
+  @@index([receiverEmail])
+  @@index([companySlug])
+}
+
+model Post {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String         @db.Text
+  description String         @db.Text
+  tag         FeatureTagType
+  category    Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId  String         @db.Uuid
+  company     Company        @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug String
+
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  images    String[]
+  comments  Comment[]
+  upvotes   Upvote[]
+  deletedAt DateTime?
+
+  changeLogs ChangeLog[]
+  postType   PostType?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([title])
+  @@index([authorId])
+  @@index([companySlug])
+  @@index([categoryId])
+}
+
+model Category {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String      @unique
+  company     Company     @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug String
+  changeLogs  ChangeLog[]
+  posts       Post[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([companySlug])
+  @@index([name])
+}
+
+model Upvote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@index([postId])
+}
+
+model Like {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+}
+
+model Company {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  description  String?
+  logo         String?
+  website      String?
+  slug         String      @unique
+  customDomain String?
+  domainVerified Boolean?
+  category     Category[]
+  changeLogs   ChangeLog[]
+  posts        Post[]
+  invites      Invite[]
+  roles        Role[]
+  deletedAt    DateTime?
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  Affiliate    Affiliate[]
+  Subscription Subscription[]
+  Notification Notification[]
+
+  @@index([name])
+  @@index([customDomain])
+  @@index([slug])
+}
+
+model Role {
+  id     String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  company     Company  @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug String
+  roleType    RoleType
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, companySlug])
+  @@index([companySlug])
+}
+
+model ChangeLog {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  post        Post?           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId      String?         @db.Uuid
+  company     Company         @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+  companySlug String
+  type        FeatureTagType
+  Category    Category[]
+  status      ChangeLogStatus @default(Draft)
+  content     Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([postId])
+  @@index([companySlug])
+}
+
+model Affiliate {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referrer         User             @relation(fields: [referrerId], references: [id], name: "Referrer", onDelete: Cascade)
+  referrerId       String
+  referred         User             @relation(fields: [referredId], references: [id], name: "Referred", onDelete: Cascade)
+  referredId       String           @unique
+  createdAt        DateTime         @default(now())
+  affiliatesStatus AffiliatesStatus @default(Lead)
+
+  companySlug String
+  company     Company @relation(fields: [companySlug], references: [slug], onDelete: Cascade)
+
+  @@unique([referrerId, referredId])
+  @@index([referrerId])
+  @@index([referredId])
+}
